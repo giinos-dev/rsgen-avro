@@ -50,7 +50,7 @@
 //!
 //! let mut out = std::io::stdout();
 //!
-//! let g = Generator::new().unwrap();
+//! let mut g = Generator::new().unwrap();
 //! g.gen(&source, &mut out).unwrap();
 //! ```
 //!
@@ -123,6 +123,7 @@ pub enum Source<'a> {
 /// It is stateless and can be reused many times.
 pub struct Generator {
     templater: Templater,
+    schema_cache: HashMap<String, Schema>,
 }
 
 impl Generator {
@@ -138,7 +139,7 @@ impl Generator {
 
     /// Generates Rust code from an Avro schema `Source`.
     /// Writes all generated types to the ouput.
-    pub fn gen(&self, source: &Source, output: &mut impl Write) -> Result<()> {
+    pub fn gen(&mut self, source: &Source, output: &mut impl Write) -> Result<()> {
         output.write_all(self.templater.str_serde()?.as_bytes())?;
 
         if self.templater.nullable {
@@ -149,7 +150,7 @@ impl Generator {
             Source::Schema(schema) => self.gen_in_order(schema, output)?,
 
             Source::SchemaStr(raw_schema) => {
-                let schema = Schema::parse_str(&raw_schema)?;
+                let schema = Schema::parse_str2(&raw_schema, &mut self.schema_cache)?;
                 self.gen_in_order(&schema, output)?
             }
 
@@ -368,7 +369,11 @@ impl GeneratorBuilder {
         let mut templater = Templater::new()?;
         templater.precision = self.precision;
         templater.nullable = self.nullable;
-        Ok(Generator { templater })
+        let mut schema_cache : HashMap<String, Schema> = HashMap::new();
+        Ok(Generator {
+            templater,
+            schema_cache,
+        })
     }
 }
 
@@ -424,7 +429,7 @@ impl Default for Test {
 }
 ";
 
-        let g = Generator::new().unwrap();
+        let mut g = Generator::new().unwrap();
         assert_schema_gen!(g, expected, raw_schema);
     }
 
@@ -474,7 +479,7 @@ impl Default for User {
 }
 "#;
 
-        let g = Generator::new().unwrap();
+        let mut g = Generator::new().unwrap();
         assert_schema_gen!(g, expected, raw_schema);
     }
 
@@ -528,7 +533,7 @@ impl Default for Test {
     }
 }
 "#;
-        let g = Generator::builder().nullable(true).build().unwrap();
+        let mut g = Generator::builder().nullable(true).build().unwrap();
         assert_schema_gen!(g, expected, raw_schema);
     }
 
@@ -643,7 +648,7 @@ impl Default for Snmp {
 }
 "#;
 
-        let g = Generator::new().unwrap();
+        let mut g = Generator::new().unwrap();
         assert_schema_gen!(g, expected, raw_schema);
     }
 
